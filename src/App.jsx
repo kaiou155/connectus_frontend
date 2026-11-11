@@ -23,6 +23,9 @@ import Relatorios from './pages/Relatorios';
 import Usuarios from './pages/Usuarios';
 import Configuracoes from './pages/Configuracoes';
 import Busca from './pages/Busca';
+import EsqueciSenha from './pages/EsqueciSenha';
+import RedefinirSenha from './pages/RedefinirSenha';
+import AlterarSenha from './pages/AlterarSenha';
 
 const { ADMINISTRADOR, LIDER, VOLUNTARIO } = PERFIS;
 const Router = config.routerMode === 'hash' ? HashRouter : BrowserRouter;
@@ -41,8 +44,11 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/cadastro-igreja" element={<CadastroIgreja />} />
+            <Route path="/esqueci-senha" element={<EsqueciSenha />} />
+            <Route path="/redefinir-senha" element={<RedefinirSenha />} />
 
             <Route element={<ProtectedRoute />}>
+              <Route path="/alterar-senha" element={<AlterarSenha />} />
               <Route element={<AppLayout />}>
                 <Route index element={<Home />} />
                 <Route path="busca" element={<Busca />} />

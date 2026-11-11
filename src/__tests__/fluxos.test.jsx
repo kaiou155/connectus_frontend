@@ -44,6 +44,58 @@ describe('login', () => {
   });
 });
 
+async function entrarComCredenciais(email, senha) {
+  fireEvent.change(await screen.findByLabelText('E-mail'), { target: { value: email } });
+  fireEvent.change(screen.getByLabelText('Senha'), { target: { value: senha } });
+  fireEvent.click(screen.getByRole('button', { name: /^Entrar$/ }));
+}
+
+describe('senha', () => {
+  it('recupera a senha pelo link e entra com a nova senha', async () => {
+    ir('/login');
+    render(<App />);
+    fireEvent.click(await screen.findByRole('link', { name: 'Esqueci minha senha' }));
+    fireEvent.change(await screen.findByLabelText('E-mail'), { target: { value: 'voluntario@conectus.app' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar link' }));
+    fireEvent.click(await screen.findByRole('link', { name: 'Abrir o link de redefinição' }));
+
+    fireEvent.change(await screen.findByLabelText('Nova senha'), { target: { value: 'novaSenha2026' } });
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'outraCoisa' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
+    expect(await screen.findByText('As senhas não conferem.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'novaSenha2026' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar nova senha' }));
+
+    await screen.findByRole('heading', { name: 'Entrar' });
+    await entrarComCredenciais('voluntario@conectus.app', 'novaSenha2026');
+    expect(await screen.findByText(/Bem-vindo ao Conectus/)).toBeTruthy();
+  });
+
+  it('usuário com senha temporária precisa trocá-la no primeiro acesso', async () => {
+    await entrarComo('Julia Antonieli');
+    navegar('Usuários');
+    fireEvent.click(await screen.findByRole('button', { name: /Redefinir senha de Carolina Magalhães/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.change(within(dialogo).getByLabelText('Senha temporária'), { target: { value: 'Temp12345' } });
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Definir senha' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    cleanup();
+
+    window.localStorage.removeItem('conectus.token');
+    ir('/login');
+    render(<App />);
+    await entrarComCredenciais('voluntario@conectus.app', 'Temp12345');
+    expect(await screen.findByRole('heading', { name: 'Defina sua senha' })).toBeTruthy();
+
+    // enquanto não trocar, qualquer página leva de volta à troca de senha
+    fireEvent.change(screen.getByLabelText('Senha temporária'), { target: { value: 'Temp12345' } });
+    fireEvent.change(screen.getByLabelText('Nova senha'), { target: { value: 'minhaSenha99' } });
+    fireEvent.change(screen.getByLabelText('Repita a nova senha'), { target: { value: 'minhaSenha99' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar senha' }));
+    expect(await screen.findByText(/Bem-vindo ao Conectus/)).toBeTruthy();
+  });
+});
+
 describe('Voluntário — cadastro e triagem', () => {
   it('cadastra membro e aloca pela sugestão automática', async () => {
     await entrarComo('Carolina Magalhães');

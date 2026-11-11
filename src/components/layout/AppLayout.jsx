@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Bell, Clock, Home, LogOut, MessageCircle, Network, Search, Settings, UserCog, Users, Filter,
+  BarChart3, Bell, Clock, Home, KeyRound, LogOut, MessageCircle, Network, Search, Settings, UserCog, Users, Filter,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { notificacaoService } from '../../services/api';
@@ -101,6 +101,9 @@ function MenuUsuario() {
             <div className="small muted">{usuario.email}</div>
             {usuario.nomeCelula && <div className="small muted">Líder de {usuario.nomeCelula}</div>}
           </div>
+          <Link className="dropdown__item" role="menuitem" to="/alterar-senha" onClick={() => setAberto(false)}>
+            <KeyRound size={16} /> Alterar senha
+          </Link>
           <button className="dropdown__item" role="menuitem" onClick={logout}>
             <LogOut size={16} /> Sair
           </button>

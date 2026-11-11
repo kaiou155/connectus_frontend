@@ -75,4 +75,12 @@ export function validarIgreja(i) {
   return erros;
 }
 
+/** Nova senha + confirmação (mesmo mínimo exigido pelo back-end). */
+export function validarNovaSenha({ novaSenha = '', confirmacao = '' }) {
+  const erros = {};
+  if (novaSenha.length < 8) erros.novaSenha = 'Mínimo de 8 caracteres.';
+  else if (novaSenha !== confirmacao) erros.confirmacao = 'As senhas não conferem.';
+  return erros;
+}
+
 export const temErros = (erros) => Object.keys(erros).length > 0;

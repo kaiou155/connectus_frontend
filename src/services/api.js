@@ -9,6 +9,10 @@ import { http } from './http';
 export const authService = {
   login: (email, senha) => http.post('/auth/login', { email, senha }),
   me: () => http.get('/auth/me'),
+  /** Envia o link de redefinição por e-mail. A resposta é a mesma exista o e-mail ou não. */
+  esqueciSenha: (email) => http.post('/auth/esqueci-senha', { email }),
+  redefinirSenha: (token, novaSenha) => http.post('/auth/redefinir-senha', { token, novaSenha }),
+  alterarSenha: (senhaAtual, novaSenha) => http.post('/auth/alterar-senha', { senhaAtual, novaSenha }),
 };
 
 // Igreja e multitenância
@@ -25,6 +29,8 @@ export const usuarioService = {
   atualizar: (id, dados) => http.put(`/usuarios/${id}`, dados),
   alterarStatus: (id, ativo, confirmar = false) =>
     http.patch(`/usuarios/${id}/status`, { ativo, confirmar }),
+  /** Define uma nova senha temporária; o usuário troca no próximo acesso. */
+  redefinirSenha: (id, senhaTemporaria) => http.post(`/usuarios/${id}/redefinir-senha`, { senhaTemporaria }),
 };
 
 // Líderes

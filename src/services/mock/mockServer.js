@@ -71,6 +71,7 @@ const usuarioPublico = (db, u) => {
     telefone: u.telefone ?? '',
     perfil: u.perfil,
     ativo: u.ativo,
+    senhaTemporaria: Boolean(u.senhaTemporaria),
     dataCriacao: u.dataCriacao,
     idIgreja: u.idIgreja,
     idCelula: cel?.idCelula ?? null,
@@ -253,6 +254,46 @@ rota('POST', '/auth/login', ({ db, body }) => {
 
 rota('GET', '/auth/me', ({ db, usuario }) => ok(usuarioPublico(db, usuario)));
 
+// ---- Senha
+const SENHA_MINIMA = 8;
+const exigirSenhaNova = (novaSenha) => {
+  if (String(novaSenha ?? '').length < SENHA_MINIMA)
+    falhar(400, 'Preencha os campos obrigatórios corretamente.', { campos: { novaSenha: 'Mínimo de 8 caracteres.' } });
+};
+
+rota('POST', '/auth/alterar-senha', ({ usuario, body }) => {
+  if (usuario.senha !== body?.senhaAtual)
+    falhar(400, 'Senha atual incorreta.', { campos: { senhaAtual: 'Senha atual incorreta.' } });
+  exigirSenhaNova(body.novaSenha);
+  usuario.senha = body.novaSenha;
+  usuario.senhaTemporaria = false;
+  return ok({ mensagem: 'Senha alterada com sucesso.' });
+});
+
+// Sem servidor de e-mail, o modo demonstração devolve o link para a tela poder exibi-lo.
+rota('POST', '/auth/esqueci-senha', ({ db, body }) => {
+  const email = String(body?.email ?? '').trim().toLowerCase();
+  const u = db.usuarios.find((x) => x.email.toLowerCase() === email && x.ativo);
+  const resposta = { mensagem: 'Se o e-mail estiver cadastrado, enviaremos as instruções para redefinir a senha.' };
+  if (!u) return ok(resposta);
+  db.tokensSenha ??= [];
+  const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  db.tokensSenha.push({ token, idUsuario: u.idUsuario, expiraEm: Date.now() + 3600_000, usado: false });
+  return ok({ ...resposta, linkDemonstracao: `/redefinir-senha?token=${token}` });
+}, { publica: true });
+
+rota('POST', '/auth/redefinir-senha', ({ db, body }) => {
+  const reg = (db.tokensSenha ?? []).find((t) => t.token === body?.token);
+  if (!reg || reg.usado || reg.expiraEm < Date.now())
+    falhar(400, 'Link inválido ou expirado. Solicite uma nova redefinição.', { codigo: 'TOKEN_INVALIDO' });
+  exigirSenhaNova(body.novaSenha);
+  const u = db.usuarios.find((x) => x.idUsuario === reg.idUsuario);
+  u.senha = body.novaSenha;
+  u.senhaTemporaria = false;
+  reg.usado = true;
+  return ok({ mensagem: 'Senha redefinida. Entre com a nova senha.' });
+}, { publica: true });
+
 // ---- Igreja e multitenância
 rota('GET', '/igrejas/atual', ({ db, usuario }) => {
   const igreja = db.igrejas.find((i) => i.idIgreja === usuario.idIgreja);
@@ -339,6 +380,7 @@ rota('POST', '/usuarios', ({ db, usuario, body }) => {
     telefone: body.telefone ?? '',
     perfil: body.perfil,
     senha: body.senhaTemporaria,
+    senhaTemporaria: true,
     ativo: true,
     dataCriacao: agoraIso(),
     idIgreja: usuario.idIgreja,
@@ -381,6 +423,16 @@ rota('PATCH', '/usuarios/:id/status', ({ db, usuario, body, params }) => {
   }
   alvo.ativo = false;
   return ok(usuarioPublico(db, alvo));
+});
+
+rota('POST', '/usuarios/:id/redefinir-senha', ({ db, usuario, body, params }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const alvo = buscarNoTenant(db.usuarios, 'idUsuario', params.id, usuario, 'Usuário');
+  if (String(body?.senhaTemporaria ?? '').length < SENHA_MINIMA)
+    falhar(400, 'Preencha os campos obrigatórios corretamente.', { campos: { senhaTemporaria: 'Mínimo de 8 caracteres.' } });
+  alvo.senha = body.senhaTemporaria;
+  alvo.senhaTemporaria = true;
+  return ok({ mensagem: `Nova senha temporária enviada para ${alvo.email}.` });
 });
 
 // ---- Líderes

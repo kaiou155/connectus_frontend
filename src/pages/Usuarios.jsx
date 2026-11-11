@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pencil, Plus, Power } from 'lucide-react';
+import { KeyRound, Pencil, Plus, Power } from 'lucide-react';
 import { usuarioService } from '../services/api';
 import { useAsync, useDebounce } from '../hooks/useAsync';
 import { useAuth } from '../context/AuthContext';
@@ -83,6 +83,59 @@ function UsuarioFormModal({ aberto, usuario, onClose, onSalvo }) {
   );
 }
 
+/** Gera uma nova senha temporária para o usuário; ele precisa trocá-la no próximo acesso. */
+function RedefinirSenhaModal({ usuario, onClose }) {
+  const toast = useToast();
+  const [senha, setSenha] = useState('');
+  const [erro, setErro] = useState('');
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    if (usuario) {
+      setSenha(gerarSenha());
+      setErro('');
+    }
+  }, [usuario]);
+
+  const salvar = async () => {
+    if (senha.length < 8) {
+      setErro('Mínimo de 8 caracteres.');
+      return;
+    }
+    setEnviando(true);
+    try {
+      const r = await usuarioService.redefinirSenha(usuario.idUsuario, senha);
+      toast.sucesso(r?.mensagem ?? 'Senha temporária definida.');
+      onClose();
+    } catch (e) {
+      setErro(e.campos?.senhaTemporaria ?? '');
+      toast.erro(e);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={Boolean(usuario)}
+      onClose={onClose}
+      title="Redefinir senha"
+      size="sm"
+      footer={
+        <>
+          <button className="btn" onClick={onClose} disabled={enviando}>Cancelar</button>
+          <button className="btn btn--primary" onClick={salvar} disabled={enviando}>{enviando ? 'Salvando…' : 'Definir senha'}</button>
+        </>
+      }
+    >
+      <p className="muted" style={{ marginTop: 10 }}>
+        {usuario?.nome} receberá a nova senha por e-mail e terá de trocá-la ao entrar.
+      </p>
+      <TextField label="Senha temporária" value={senha} onChange={(e) => setSenha(e.target.value)} error={erro} />
+    </Modal>
+  );
+}
+
 // Gerenciar usuários
 export default function Usuarios() {
   const { usuario: eu } = useAuth();
@@ -92,6 +145,7 @@ export default function Usuarios() {
   const { dados, erro, carregando, recarregar } = useAsync(() => usuarioService.listar({ ...f, q }), [q, f.perfil, f.ativo]);
   const [form, setForm] = useState({ aberto: false, usuario: null });
   const [confirmacao, setConfirmacao] = useState(null);
+  const [redefinir, setRedefinir] = useState(null);
 
   const alternar = async (u, confirmar = false) => {
     try {
@@ -139,6 +193,11 @@ export default function Usuarios() {
                   <td>
                     <div className="row" style={{ gap: 4, flexWrap: 'nowrap', justifyContent: 'flex-end' }}>
                       <button className="btn btn--sm btn--ghost" onClick={() => setForm({ aberto: true, usuario: u })} aria-label={`Editar ${u.nome}`}><Pencil size={14} /></button>
+                      {u.idUsuario !== eu.idUsuario && u.ativo && (
+                        <button className="btn btn--sm btn--ghost" onClick={() => setRedefinir(u)} aria-label={`Redefinir senha de ${u.nome}`} title="Redefinir senha">
+                          <KeyRound size={14} />
+                        </button>
+                      )}
                       {u.idUsuario !== eu.idUsuario && (
                         <button className="btn btn--sm btn--ghost" onClick={() => alternar(u)} aria-label={u.ativo ? `Desativar ${u.nome}` : `Reativar ${u.nome}`} title={u.ativo ? 'Desativar' : 'Reativar'}>
                           <Power size={14} color={u.ativo ? 'var(--danger)' : 'var(--success)'} />
@@ -154,6 +213,7 @@ export default function Usuarios() {
       )}
 
       <UsuarioFormModal aberto={form.aberto} usuario={form.usuario} onClose={() => setForm({ aberto: false, usuario: null })} onSalvo={() => recarregar({ silencioso: true })} />
+      <RedefinirSenhaModal usuario={redefinir} onClose={() => setRedefinir(null)} />
       <ConfirmDialog
         open={Boolean(confirmacao)}
         title="Desativar líder?"

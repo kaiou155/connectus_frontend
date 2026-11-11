@@ -72,13 +72,9 @@ export default function Login() {
             required
           />
           <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={() => setErro('Solicite a redefinição de senha ao administrador da sua igreja.')}
-            >
+            <Link to="/esqueci-senha" className="btn btn--ghost btn--sm">
               Esqueci minha senha
-            </button>
+            </Link>
           </div>
           {erro && (
             <div className="alert alert--danger" role="alert">
