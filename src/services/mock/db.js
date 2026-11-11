@@ -5,8 +5,11 @@
  */
 import { storage } from '../../utils/storage';
 import { geocodificar } from './geo';
+import { assinaturaDe } from './assinatura';
 
 const DB_KEY = 'conectus.mockdb.v1';
+// aumente quando o formato do banco simulado mudar (versão 2: assinaturas e recuperação de senha)
+const VERSAO = 2;
 const DIA = 86400000;
 
 // PRNG determinístico (mulberry32) — a mesma semente gera sempre os mesmos dados
@@ -280,8 +283,12 @@ export function criarSeed(agora = Date.now()) {
     });
   });
 
+  // as duas igrejas do cenário já são assinantes em dia
+  const comAssinaturas = { igrejas, assinaturas: [] };
+  igrejas.forEach((i) => assinaturaDe(comAssinaturas, i.idIgreja, agora));
+
   return {
-    versao: 1,
+    versao: VERSAO,
     seq: {
       membro: idMembro, historico: idHist, log: idLog, espera: listaEspera.length,
       feedback: feedbacks.length, disponibilidade: disponibilidades.length,
@@ -289,6 +296,7 @@ export function criarSeed(agora = Date.now()) {
     },
     igrejas, perfis, usuarios, celulas, membros, disponibilidades, historicoCelulas,
     logsTriagem, listaEspera, feedbacks, notificacoesLidas: [],
+    assinaturas: comAssinaturas.assinaturas, tokensSenha: [],
   };
 }
 
@@ -297,7 +305,8 @@ let cache = null;
 export function getDb() {
   if (!cache) {
     cache = storage.getJson(DB_KEY);
-    if (!cache || cache.versao !== 1) {
+    // banco salvo por uma versão anterior do front: recria o cenário de demonstração
+    if (!cache || cache.versao !== VERSAO) {
       cache = criarSeed();
       salvarDb();
     }

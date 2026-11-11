@@ -96,6 +96,57 @@ describe('senha', () => {
   });
 });
 
+describe('assinatura', () => {
+  it('nova igreja começa em teste grátis e assina com cupom', async () => {
+    ir('/cadastro-igreja');
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText('Nome da igreja'), { target: { value: 'Igreja Esperança' } });
+    fireEvent.change(screen.getByLabelText('Cidade'), { target: { value: 'Ribeirão Preto' } });
+    fireEvent.change(screen.getByLabelText('Seu nome'), { target: { value: 'Ana Ribeiro' } });
+    fireEvent.change(screen.getByLabelText('E-mail'), { target: { value: 'ana@esperanca.org' } });
+    fireEvent.change(screen.getByLabelText('Senha'), { target: { value: 'senhaForte1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cadastrar igreja' }));
+
+    expect(await screen.findByText(/O teste grátis já começou/)).toBeTruthy();
+    expect(screen.getByText('Teste grátis:')).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Assinar este plano' }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.change(within(dialogo).getByLabelText('Cupom de desconto'), { target: { value: 'tcc2026' } });
+    fireEvent.click(within(dialogo).getByRole('button', { name: /Aplicar/ }));
+    expect(await within(dialogo).findByText(/20% de desconto/)).toBeTruthy();
+    fireEvent.click(within(dialogo).getByRole('button', { name: /Ir para o pagamento/ }));
+
+    expect(await screen.findByText('Assinatura confirmada!')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText('Teste grátis:')).toBeNull());
+  });
+
+  it('com o teste encerrado o sistema fica somente leitura até regularizar', async () => {
+    await entrarComo('Julia Antonieli');
+    navegar('Configurações');
+    fireEvent.click(await screen.findByRole('button', { name: /Simular fim do teste grátis/ }));
+    expect(await screen.findByText(/modo somente leitura: é possível consultar/)).toBeTruthy();
+
+    // consultar continua funcionando; cadastrar é recusado pelo servidor
+    navegar('Usuários');
+    expect(await screen.findByText('voluntario@conectus.app')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Novo usuário/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.change(within(dialogo).getByLabelText('Nome'), { target: { value: 'Rita Moraes' } });
+    fireEvent.change(within(dialogo).getByLabelText('E-mail'), { target: { value: 'rita@conectus.app' } });
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Salvar' }));
+    expect(await screen.findByText(/Regularize em Configurações > Assinatura/)).toBeTruthy();
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
+
+    fireEvent.click(screen.getByRole('link', { name: 'Regularizar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Assinar este plano' }));
+    const checkout = await screen.findByRole('dialog');
+    fireEvent.click(within(checkout).getByRole('button', { name: /Ir para o pagamento/ }));
+    expect(await screen.findByText('Assinatura confirmada!')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByText(/modo somente leitura: é possível consultar/)).toBeNull());
+  });
+});
+
 describe('Voluntário — cadastro e triagem', () => {
   it('cadastra membro e aloca pela sugestão automática', async () => {
     await entrarComo('Carolina Magalhães');
@@ -197,6 +248,17 @@ describe('Administrador', () => {
     fireEvent.click(within(dialogo).getByRole('button', { name: 'Excluir definitivamente' }));
     await screen.findByRole('heading', { name: 'Membros' });
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Diego Alves' })).toBeNull());
+  });
+
+  it('faz upgrade do plano da assinatura', async () => {
+    await entrarComo('Julia Antonieli');
+    navegar('Configurações');
+    fireEvent.click(await screen.findByRole('link', { name: /Assinatura e plano/ }));
+    expect(await screen.findByRole('heading', { name: 'Plano Intermediário' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Trocar para Premium' }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Trocar plano' }));
+    expect(await screen.findByRole('heading', { name: 'Plano Premium' })).toBeTruthy();
   });
 
   it('dados de outra igreja ficam isolados', async () => {

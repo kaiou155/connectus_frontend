@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  BarChart3, Bell, Clock, Home, KeyRound, LogOut, MessageCircle, Network, Search, Settings, UserCog, Users, Filter,
+  BarChart3, Bell, Clock, CreditCard, Home, KeyRound, LogOut, MessageCircle, Network, Search, Settings, UserCog, Users, Filter,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { notificacaoService } from '../../services/api';
 import { config } from '../../services/config';
 import { useAsync } from '../../hooks/useAsync';
 import { Avatar } from '../ui';
+import AssinaturaAviso from '../AssinaturaAviso';
 import { PERFIL_LABEL, PERFIS } from '../../utils/constants';
 import { primeiroNome } from '../../utils/format';
 
@@ -101,6 +102,11 @@ function MenuUsuario() {
             <div className="small muted">{usuario.email}</div>
             {usuario.nomeCelula && <div className="small muted">Líder de {usuario.nomeCelula}</div>}
           </div>
+          {usuario.perfil === PERFIS.ADMINISTRADOR && (
+            <Link className="dropdown__item" role="menuitem" to="/assinatura" onClick={() => setAberto(false)}>
+              <CreditCard size={16} /> Assinatura e plano
+            </Link>
+          )}
           <Link className="dropdown__item" role="menuitem" to="/alterar-senha" onClick={() => setAberto(false)}>
             <KeyRound size={16} /> Alterar senha
           </Link>
@@ -171,6 +177,7 @@ export default function AppLayout() {
             </span>
           </div>
         )}
+        <AssinaturaAviso />
         <Outlet />
       </main>
 

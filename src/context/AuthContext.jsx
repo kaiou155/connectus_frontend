@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/api';
-import { setUnauthorizedHandler, tokenStore } from '../services/http';
+import { setBloqueioHandler, setUnauthorizedHandler, tokenStore } from '../services/http';
 
 const AuthContext = createContext(null);
 
@@ -25,6 +25,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     setUnauthorizedHandler(logout);
+    // a assinatura pode ter vencido com a sessão aberta: relê para a faixa de aviso aparecer
+    setBloqueioHandler(() => {
+      authService.me().then(setUsuario).catch(() => {});
+    });
     const token = tokenStore.get();
     if (!token || tokenExpirado(token)) {
       tokenStore.clear();

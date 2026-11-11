@@ -26,6 +26,8 @@ import Busca from './pages/Busca';
 import EsqueciSenha from './pages/EsqueciSenha';
 import RedefinirSenha from './pages/RedefinirSenha';
 import AlterarSenha from './pages/AlterarSenha';
+import Assinatura from './pages/Assinatura';
+import AssinaturaRetorno from './pages/AssinaturaRetorno';
 
 const { ADMINISTRADOR, LIDER, VOLUNTARIO } = PERFIS;
 const Router = config.routerMode === 'hash' ? HashRouter : BrowserRouter;
@@ -73,6 +75,8 @@ export default function App() {
                   <Route path="relatorios" element={<Relatorios />} />
                   <Route path="usuarios" element={<Usuarios />} />
                   <Route path="configuracoes" element={<Configuracoes />} />
+                  <Route path="assinatura" element={<Assinatura />} />
+                  <Route path="assinatura/retorno" element={<AssinaturaRetorno />} />
                 </Route>
 
                 <Route

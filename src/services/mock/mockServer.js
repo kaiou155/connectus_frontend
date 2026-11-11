@@ -10,6 +10,10 @@ import { calcularMatching, haversine } from './matching';
 import { geocodificar, normalizar } from './geo';
 import { calcularIdade } from '../../utils/format';
 import { PLANOS, SCORE_MINIMO } from '../../utils/constants';
+import {
+  CUPONS, assinaturaDe, avaliarAcesso, faturaPaga, listarPlanos, mensagemBloqueio, novaAssinaturaEmTeste,
+  planoPublico, resumoAcesso,
+} from './assinatura';
 
 const DIA = 86400000;
 const agoraIso = () => new Date().toISOString();
@@ -131,9 +135,10 @@ function usoDoPlano(db, idIgreja) {
   };
 }
 
+const planoDaIgreja = (db, idIgreja) => assinaturaDe(db, idIgreja).idPlano;
+
 function verificarLimite(db, usuario, recurso) {
-  const igreja = db.igrejas.find((i) => i.idIgreja === usuario.idIgreja);
-  const plano = PLANOS[igreja.plano];
+  const plano = PLANOS[planoDaIgreja(db, usuario.idIgreja)];
   const uso = usoDoPlano(db, usuario.idIgreja);
   if (uso[recurso] >= plano.limites[recurso]) {
     falhar(403, `Limite do plano ${plano.label} atingido (${plano.limites[recurso]} ${recurso}). Faça upgrade em Configurações.`, {
@@ -232,7 +237,8 @@ function dadosCelula(body) {
 
 // ---------------------------------------------------------------- rotas
 const rotas = [];
-const rota = (method, padrao, handler, { publica = false } = {}) => {
+// semBloqueio: a rota continua aceitando escrita mesmo com a assinatura bloqueada (é por ela que se regulariza)
+const rota = (method, padrao, handler, { publica = false, semBloqueio = false } = {}) => {
   const chaves = [];
   const regex = new RegExp(
     `^${padrao.replace(/:(\w+)/g, (_, k) => {
@@ -240,8 +246,10 @@ const rota = (method, padrao, handler, { publica = false } = {}) => {
       return '([^/]+)';
     })}$`,
   );
-  rotas.push({ method, regex, chaves, handler, publica });
+  rotas.push({ method, regex, chaves, handler, publica, semBloqueio });
 };
+
+const situacaoDaIgreja = (db, idIgreja) => resumoAcesso(assinaturaDe(db, idIgreja));
 
 // ---- Login
 rota('POST', '/auth/login', ({ db, body }) => {
@@ -249,10 +257,11 @@ rota('POST', '/auth/login', ({ db, body }) => {
   const u = db.usuarios.find((x) => x.email.toLowerCase() === email);
   if (!u || u.senha !== body?.senha) return erro(401, 'E-mail ou senha inválidos.');
   if (!u.ativo) return erro(403, 'Usuário desativado. Procure o administrador.');
-  return ok({ token: emitirToken(u), usuario: usuarioPublico(db, u) });
+  return ok({ token: emitirToken(u), usuario: usuarioPublico(db, u), assinatura: situacaoDaIgreja(db, u.idIgreja) });
 }, { publica: true });
 
-rota('GET', '/auth/me', ({ db, usuario }) => ok(usuarioPublico(db, usuario)));
+rota('GET', '/auth/me', ({ db, usuario }) =>
+  ok({ ...usuarioPublico(db, usuario), assinatura: situacaoDaIgreja(db, usuario.idIgreja) }));
 
 // ---- Senha
 const SENHA_MINIMA = 8;
@@ -261,6 +270,7 @@ const exigirSenhaNova = (novaSenha) => {
     falhar(400, 'Preencha os campos obrigatórios corretamente.', { campos: { novaSenha: 'Mínimo de 8 caracteres.' } });
 };
 
+// trocar a senha continua possível com a assinatura bloqueada
 rota('POST', '/auth/alterar-senha', ({ usuario, body }) => {
   if (usuario.senha !== body?.senhaAtual)
     falhar(400, 'Senha atual incorreta.', { campos: { senhaAtual: 'Senha atual incorreta.' } });
@@ -268,7 +278,7 @@ rota('POST', '/auth/alterar-senha', ({ usuario, body }) => {
   usuario.senha = body.novaSenha;
   usuario.senhaTemporaria = false;
   return ok({ mensagem: 'Senha alterada com sucesso.' });
-});
+}, { semBloqueio: true });
 
 // Sem servidor de e-mail, o modo demonstração devolve o link para a tela poder exibi-lo.
 rota('POST', '/auth/esqueci-senha', ({ db, body }) => {
@@ -295,30 +305,34 @@ rota('POST', '/auth/redefinir-senha', ({ db, body }) => {
 }, { publica: true });
 
 // ---- Igreja e multitenância
-rota('GET', '/igrejas/atual', ({ db, usuario }) => {
-  const igreja = db.igrejas.find((i) => i.idIgreja === usuario.idIgreja);
-  return ok({ ...igreja, uso: usoDoPlano(db, igreja.idIgreja), limites: PLANOS[igreja.plano].limites });
-});
+/** Formato de GET /igrejas/atual: dados da igreja + uso, limites e situação da assinatura. */
+function montarIgreja(db, idIgreja) {
+  const igreja = db.igrejas.find((i) => i.idIgreja === idIgreja);
+  const a = assinaturaDe(db, idIgreja);
+  return {
+    ...igreja,
+    plano: a.idPlano,
+    uso: usoDoPlano(db, idIgreja),
+    limites: planoPublico(a.idPlano).limites,
+    assinatura: resumoAcesso(a),
+  };
+}
+
+rota('GET', '/igrejas/atual', ({ db, usuario }) => ok(montarIgreja(db, usuario.idIgreja)));
 
 rota('PUT', '/igrejas/atual', ({ db, usuario, body }) => {
   exigirPerfil(usuario, 'ADMINISTRADOR');
-  exigirCampos(body, ['nomeIgreja', 'cidade', 'estado', 'plano']);
-  if (!PLANOS[body.plano]) falhar(400, 'Plano inválido.');
-  const uso = usoDoPlano(db, usuario.idIgreja);
-  const limites = PLANOS[body.plano].limites;
-  const excede = Object.keys(limites).filter((k) => uso[k] > limites[k]);
-  if (excede.length) {
-    falhar(409, `O uso atual (${excede.map((k) => `${uso[k]} ${k}`).join(', ')}) excede o plano ${PLANOS[body.plano].label}.`);
-  }
+  exigirCampos(body, ['nomeIgreja', 'cidade', 'estado']);
   const igreja = db.igrejas.find((i) => i.idIgreja === usuario.idIgreja);
   Object.assign(igreja, {
     nomeIgreja: body.nomeIgreja.trim(),
     denominacao: body.denominacao?.trim() ?? '',
     cidade: body.cidade.trim(),
     estado: body.estado,
-    plano: body.plano,
   });
-  return ok({ ...igreja, uso: usoDoPlano(db, igreja.idIgreja), limites: PLANOS[igreja.plano].limites });
+  // a troca de plano também é aceita aqui, com a mesma regra de POST /assinatura/plano
+  if (body.plano && body.plano !== planoDaIgreja(db, usuario.idIgreja)) trocarPlano(db, usuario, body.plano);
+  return ok(montarIgreja(db, usuario.idIgreja));
 });
 
 // Cadastro de uma nova igreja cliente (onboarding SaaS): cria o tenant e o primeiro administrador
@@ -327,6 +341,7 @@ rota('POST', '/igrejas', ({ db, body }) => {
   const admin = body?.administrador ?? {};
   exigirCampos(igrejaBody, ['nomeIgreja', 'cidade', 'estado', 'plano']);
   exigirCampos(admin, ['nome', 'email', 'senha']);
+  if (!PLANOS[igrejaBody.plano]) falhar(400, 'Plano inválido.', { campos: { plano: 'Plano inválido.' } });
   if (String(admin.senha).length < 8) falhar(400, 'A senha deve ter ao menos 8 caracteres.', { campos: { senha: 'Mínimo de 8 caracteres.' } });
   if (db.usuarios.some((u) => u.email.toLowerCase() === admin.email.trim().toLowerCase()))
     falhar(409, 'Já existe um usuário com este e-mail.', { campos: { email: 'E-mail já cadastrado.' } });
@@ -353,8 +368,166 @@ rota('POST', '/igrejas', ({ db, body }) => {
     idIgreja: igreja.idIgreja,
   };
   db.usuarios.push(u);
-  return created({ igreja, token: emitirToken(u), usuario: usuarioPublico(db, u) });
+  novaAssinaturaEmTeste(db, igreja.idIgreja, igrejaBody.plano);
+  return created({
+    igreja: montarIgreja(db, igreja.idIgreja),
+    token: emitirToken(u),
+    usuario: { ...usuarioPublico(db, u), assinatura: situacaoDaIgreja(db, igreja.idIgreja) },
+  });
 }, { publica: true });
+
+// ---- Planos e assinatura
+rota('GET', '/planos', () => ok(listarPlanos()), { publica: true });
+
+const assinanteMp = (a) => a.assinanteMp && ['ATIVA', 'ATRASADA'].includes(a.status);
+
+function exigirUsoCabe(db, idIgreja, idPlano) {
+  const uso = usoDoPlano(db, idIgreja);
+  const limites = PLANOS[idPlano].limites;
+  const excede = Object.keys(limites).filter((k) => uso[k] > limites[k]);
+  if (excede.length) {
+    falhar(
+      409,
+      `O uso atual (${excede.map((k) => `${uso[k]} ${k}`).join(', ')}) excede o plano ${PLANOS[idPlano].label}. Reduza o uso antes de trocar.`,
+      { codigo: 'USO_EXCEDE_PLANO' },
+    );
+  }
+}
+
+/** Formato de GET /assinatura do back-end. */
+function montarAssinatura(db, idIgreja) {
+  const a = assinaturaDe(db, idIgreja);
+  const acesso = resumoAcesso(a);
+  return {
+    idAssinatura: a.idAssinatura,
+    ...acesso,
+    planoId: a.idPlano,
+    plano: planoPublico(a.idPlano),
+    planoPendente: a.idPlanoPendente ? planoPublico(a.idPlanoPendente) : null,
+    valorCobrado: a.valorCobrado,
+    cupom: a.cupom,
+    inicioTeste: a.inicioTeste,
+    fimTeste: a.fimTeste,
+    vencimento: a.vencimento,
+    ultimoPagamento: a.ultimoPagamento,
+    dataCancelamento: a.dataCancelamento,
+    formaCobranca: a.assinanteMp ? 'MERCADO_PAGO' : null,
+    mpStatus: a.assinanteMp ? 'authorized' : null,
+    podeFazerCheckout: !assinanteMp(a),
+    podeCancelar: !['CANCELADA', 'EXPIRADA'].includes(acesso.status),
+    pagamentosHabilitados: true,
+    uso: usoDoPlano(db, idIgreja),
+    limites: planoPublico(a.idPlano).limites,
+    faturas: [...a.faturas].reverse(),
+  };
+}
+
+function trocarPlano(db, usuario, idPlanoNovo) {
+  if (!PLANOS[idPlanoNovo]) falhar(400, 'Plano inválido.', { campos: { plano: 'Plano inválido.' } });
+  const a = assinaturaDe(db, usuario.idIgreja);
+  if (idPlanoNovo === a.idPlano && !a.idPlanoPendente) falhar(400, 'A igreja já está neste plano.');
+  exigirUsoCabe(db, usuario.idIgreja, idPlanoNovo);
+  const nome = PLANOS[idPlanoNovo].label;
+
+  if (avaliarAcesso(a).status === 'TESTE') {
+    a.idPlano = idPlanoNovo;
+    return `Plano alterado para ${nome}.`;
+  }
+  if (!assinanteMp(a)) {
+    falhar(409, 'Para contratar um plano é necessário concluir o pagamento.', { codigo: 'CHECKOUT_NECESSARIO' });
+  }
+  const perc = a.cupom?.percDesconto ?? 0;
+  const valor = Math.round(PLANOS[idPlanoNovo].preco * (1 - perc / 100) * 100) / 100;
+  a.valorCobrado = valor;
+  if (PLANOS[idPlanoNovo].preco > PLANOS[a.idPlano].preco) {
+    a.idPlano = idPlanoNovo;
+    a.idPlanoPendente = null;
+    return `Upgrade para ${nome} aplicado. O novo valor (R$ ${valor.toFixed(2)}) será cobrado a partir da próxima fatura.`;
+  }
+  a.idPlanoPendente = idPlanoNovo;
+  return `Downgrade para ${nome} agendado para o fim do período pago (${a.vencimento?.slice(0, 10) ?? 'próxima cobrança'}).`;
+}
+
+// rotas de cobrança: somente administrador, e nunca bloqueadas (é por elas que se regulariza)
+const opcoesCobranca = { semBloqueio: true };
+
+rota('GET', '/assinatura', ({ db, usuario }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  return ok(montarAssinatura(db, usuario.idIgreja));
+}, opcoesCobranca);
+
+rota('GET', '/assinatura/cupom/:codigo', ({ params }) => {
+  const codigo = params.codigo.trim().toUpperCase();
+  const c = CUPONS[codigo];
+  return ok(c ? { valido: true, codigo, ...c } : { valido: false, codigo, percDesconto: 0, descricao: '' });
+}, { publica: true });
+
+// Checkout simulado: em vez do link do Mercado Pago, devolve a tela de retorno do próprio app
+rota('POST', '/assinatura/checkout', ({ db, usuario, body }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const a = assinaturaDe(db, usuario.idIgreja);
+  if (assinanteMp(a)) {
+    falhar(409, 'Sua igreja já possui uma assinatura ativa. Para mudar o plano use "Trocar plano".', { codigo: 'JA_ASSINANTE' });
+  }
+  if (!PLANOS[body?.plano]) falhar(400, 'Escolha um plano.', { campos: { plano: 'Escolha um plano.' } });
+  exigirUsoCabe(db, usuario.idIgreja, body.plano);
+  let perc = 0;
+  let cupom = null;
+  if (body.cupom?.trim()) {
+    const codigo = body.cupom.trim().toUpperCase();
+    if (!CUPONS[codigo]) falhar(400, 'Cupom inválido ou expirado.', { campos: { cupom: 'Cupom inválido ou expirado.' } });
+    perc = CUPONS[codigo].percDesconto;
+    cupom = { codigo, percDesconto: perc };
+  }
+  const valor = Math.round(PLANOS[body.plano].preco * (1 - perc / 100) * 100) / 100;
+  a.checkoutPendente = { plano: body.plano, valor, cupom };
+  return ok({ initPoint: '/assinatura/retorno?simulado=1', idAssinaturaMp: `demo-${a.idAssinatura}`, plano: body.plano, valor, percDesconto: perc });
+}, opcoesCobranca);
+
+// Na volta do "pagamento", confirma o checkout pendente (no back-end real isto relê o Mercado Pago)
+rota('POST', '/assinatura/sincronizar', ({ db, usuario }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const a = assinaturaDe(db, usuario.idIgreja);
+  if (a.checkoutPendente) {
+    const { plano, valor, cupom } = a.checkoutPendente;
+    Object.assign(a, {
+      status: 'ATIVA',
+      idPlano: plano,
+      idPlanoPendente: null,
+      assinanteMp: true,
+      valorCobrado: valor,
+      cupom,
+      vencimento: new Date(Date.now() + 30 * 86400000).toISOString(),
+      ultimoPagamento: agoraIso(),
+      dataCancelamento: null,
+      checkoutPendente: null,
+    });
+    a.faturas.push(faturaPaga(a));
+  }
+  return ok(montarAssinatura(db, usuario.idIgreja));
+}, opcoesCobranca);
+
+rota('POST', '/assinatura/plano', ({ db, usuario, body }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const mensagem = trocarPlano(db, usuario, body?.plano);
+  return ok({ ...montarAssinatura(db, usuario.idIgreja), mensagem });
+}, opcoesCobranca);
+
+rota('POST', '/assinatura/cancelar', ({ db, usuario }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const a = assinaturaDe(db, usuario.idIgreja);
+  if (['CANCELADA', 'EXPIRADA'].includes(avaliarAcesso(a).status) && a.status !== 'TESTE') {
+    falhar(409, 'A assinatura já está cancelada ou expirada.');
+  }
+  Object.assign(a, {
+    vencimento: a.status === 'TESTE' ? a.fimTeste ?? agoraIso() : a.vencimento ?? agoraIso(),
+    status: 'CANCELADA',
+    assinanteMp: false,
+    dataCancelamento: agoraIso(),
+    idPlanoPendente: null,
+  });
+  return ok({ ...montarAssinatura(db, usuario.idIgreja), mensagem: 'Assinatura cancelada. O acesso continua até o fim do período já pago.' });
+}, opcoesCobranca);
 
 // ---- Usuários
 rota('GET', '/usuarios', ({ db, usuario, query }) => {
@@ -1077,6 +1250,16 @@ export async function handleMockRequest({ method, url, body, token }) {
 
     const usuario = autenticar(db, token);
     if (!r.publica && !usuario) return erro(401, 'Sessão expirada. Entre novamente.');
+
+    // assinatura sem acesso => somente leitura: consultas continuam, escritas são recusadas
+    if (usuario && !r.publica && !r.semBloqueio && method !== 'GET') {
+      const s = avaliarAcesso(assinaturaDe(db, usuario.idIgreja));
+      if (!s.liberado) {
+        return erro(403, mensagemBloqueio(s.motivoBloqueio, usuario.perfil === 'ADMINISTRADOR'), {
+          codigo: 'ASSINATURA_BLOQUEADA',
+        });
+      }
+    }
 
     try {
       const res = r.handler({ db, usuario, body: body ?? {}, params, query });

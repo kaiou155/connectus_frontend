@@ -90,26 +90,37 @@ export const STATUS_TRIAGEM = {
   REJEITADA: 'REJEITADA',
 };
 
-// igreja.plano — planos de assinatura
+// Planos de assinatura. Com o back-end real a lista vem de GET /planos; estes valores são o padrão.
 export const PLANOS = {
   ESSENCIAL: {
     label: 'Essencial',
     preco: 49,
+    descricao: 'Para igrejas de pequeno porte: até 100 membros, 5 células e 3 usuários.',
     limites: { membros: 100, celulas: 5, usuarios: 3 },
     historicoMeses: 6,
   },
   INTERMEDIARIO: {
     label: 'Intermediário',
     preco: 99,
+    descricao: 'Para igrejas em crescimento: até 500 membros, 20 células e 10 usuários.',
     limites: { membros: 500, celulas: 20, usuarios: 10 },
     historicoMeses: 12,
   },
   PREMIUM: {
     label: 'Premium',
     preco: 179,
+    descricao: 'Para grandes instituições: cadastros ilimitados e histórico completo.',
     limites: { membros: Infinity, celulas: Infinity, usuarios: Infinity },
     historicoMeses: Infinity,
   },
+};
+
+export const STATUS_ASSINATURA = {
+  TESTE: { label: 'Teste grátis', tom: 'info' },
+  ATIVA: { label: 'Ativa', tom: 'success' },
+  ATRASADA: { label: 'Pagamento atrasado', tom: 'warning' },
+  CANCELADA: { label: 'Cancelada', tom: 'neutral' },
+  EXPIRADA: { label: 'Expirada', tom: 'danger' },
 };
 
 export const UFS = [

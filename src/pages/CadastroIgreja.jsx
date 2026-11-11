@@ -1,12 +1,22 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Check } from 'lucide-react';
-import { igrejaService } from '../services/api';
+import { igrejaService, planoService } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useAsync } from '../hooks/useAsync';
 import { SelectField, TextField } from '../components/ui';
 import { PLANOS, UFS } from '../utils/constants';
 import { formatarNumero } from '../utils/format';
 import { isEmail, temErros, validarIgreja } from '../utils/validators';
+
+// Se GET /planos falhar, a tela continua usando os valores padrão
+const PLANOS_PADRAO = Object.entries(PLANOS).map(([idPlano, p]) => ({
+  idPlano,
+  nome: p.label,
+  valor: p.preco,
+  limites: p.limites,
+}));
+const limiteTexto = (n) => (n == null || !Number.isFinite(n) ? 'ilimitados' : formatarNumero(n));
 
 const vazio = {
   nomeIgreja: '', denominacao: '', cidade: '', estado: 'SP', plano: 'ESSENCIAL',
@@ -22,10 +32,13 @@ export default function CadastroIgreja() {
   const [enviando, setEnviando] = useState(false);
   const [erroGeral, setErroGeral] = useState('');
   const set = (campo) => (e) => setF((v) => ({ ...v, [campo]: e.target.value }));
+  const catalogo = useAsync(() => planoService.listar(), []);
+  const planos = catalogo.dados?.planos ?? PLANOS_PADRAO;
+  const trialDias = catalogo.dados?.trialDias;
 
   const enviar = async (e) => {
     e.preventDefault();
-    const er = validarIgreja(f);
+    const er = validarIgreja(f, { exigirPlano: true });
     if (!f.nome.trim()) er.nome = 'Informe seu nome.';
     if (!isEmail(f.email)) er.email = 'E-mail inválido.';
     if (f.senha.length < 8) er.senha = 'Mínimo de 8 caracteres.';
@@ -38,8 +51,9 @@ export default function CadastroIgreja() {
         igreja: { nomeIgreja: f.nomeIgreja, denominacao: f.denominacao, cidade: f.cidade, estado: f.estado, plano: f.plano },
         administrador: { nome: f.nome, email: f.email, senha: f.senha },
       });
-      iniciarSessao(r.token, r.usuario);
-      navigate('/configuracoes', { replace: true, state: { boasVindas: true } });
+      // a assinatura em teste grátis já começa no cadastro; o pagamento pode ser feito depois
+      iniciarSessao(r.token, { ...r.usuario, assinatura: r.usuario.assinatura ?? r.igreja?.assinatura ?? null });
+      navigate('/assinatura', { replace: true, state: { boasVindas: true } });
     } catch (err) {
       setErros(err.campos ?? {});
       setErroGeral(err.message);
@@ -63,27 +77,33 @@ export default function CadastroIgreja() {
           </div>
 
           <div className="eyebrow" style={{ marginTop: 22 }}>Plano</div>
+          {trialDias > 0 && (
+            <p className="small muted" style={{ marginTop: 0 }}>
+              Os primeiros {trialDias} dias são grátis. O pagamento pelo Mercado Pago pode ser feito depois, dentro do sistema.
+            </p>
+          )}
           <div className="grid grid--3">
-            {Object.entries(PLANOS).map(([chave, p]) => (
+            {planos.map((p) => (
               <button
                 type="button"
-                key={chave}
-                className={`card card--flat ${f.plano === chave ? 'btn--selected' : ''}`}
+                key={p.idPlano}
+                className={`card card--flat ${f.plano === p.idPlano ? 'btn--selected' : ''}`}
                 style={{ textAlign: 'left', cursor: 'pointer', padding: 14 }}
-                onClick={() => setF((v) => ({ ...v, plano: chave }))}
-                aria-pressed={f.plano === chave}
+                onClick={() => setF((v) => ({ ...v, plano: p.idPlano }))}
+                aria-pressed={f.plano === p.idPlano}
               >
                 <div className="row row--between">
-                  <span className="strong">{p.label}</span>
-                  {f.plano === chave && <Check size={16} />}
+                  <span className="strong">{p.nome}</span>
+                  {f.plano === p.idPlano && <Check size={16} />}
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 800 }}>R$ {p.preco}<span className="small muted">/mês</span></div>
+                <div style={{ fontSize: 22, fontWeight: 800 }}>R$ {p.valor}<span className="small muted">/mês</span></div>
                 <div className="tiny muted">
-                  {formatarNumero(p.limites.membros)} membros · {formatarNumero(p.limites.celulas)} células · {formatarNumero(p.limites.usuarios)} usuários
+                  {limiteTexto(p.limites.membros)} membros · {limiteTexto(p.limites.celulas)} células · {limiteTexto(p.limites.usuarios)} usuários
                 </div>
               </button>
             ))}
           </div>
+          {erros.plano && <span className="field__error">{erros.plano}</span>}
 
           <div className="eyebrow" style={{ marginTop: 22 }}>Administrador</div>
           <div className="form-grid">

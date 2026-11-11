@@ -109,3 +109,20 @@ export const relatorioService = {
 export const buscaService = {
   buscar: (q) => http.get('/busca', { params: { q } }),
 };
+
+// Planos (público) — { trialDias, planos: [{ idPlano, nome, descricao, valor, limites, historicoMeses }] }
+export const planoService = {
+  listar: () => http.get('/planos'),
+};
+
+// Assinatura da igreja — somente administrador; funciona mesmo com o sistema bloqueado
+export const assinaturaService = {
+  obter: () => http.get('/assinatura'),
+  validarCupom: (codigo) => http.get(`/assinatura/cupom/${encodeURIComponent(codigo.trim())}`),
+  /** Devolve { initPoint }: o endereço de pagamento do Mercado Pago. */
+  checkout: ({ plano, cupom, emailPagador }) => http.post('/assinatura/checkout', { plano, cupom, emailPagador }),
+  /** Chamado na volta do Mercado Pago para não depender só do webhook. */
+  sincronizar: () => http.post('/assinatura/sincronizar'),
+  trocarPlano: (plano) => http.post('/assinatura/plano', { plano }),
+  cancelar: () => http.post('/assinatura/cancelar'),
+};

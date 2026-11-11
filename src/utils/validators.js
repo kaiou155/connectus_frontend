@@ -66,12 +66,12 @@ export function validarUsuario(u, { edicao = false } = {}) {
   return erros;
 }
 
-export function validarIgreja(i) {
+export function validarIgreja(i, { exigirPlano = false } = {}) {
   const erros = {};
   if (!i.nomeIgreja?.trim()) erros.nomeIgreja = 'Informe o nome da igreja.';
   if (!i.cidade?.trim()) erros.cidade = 'Informe a cidade.';
   if (!i.estado) erros.estado = 'Selecione o estado.';
-  if (!i.plano) erros.plano = 'Selecione o plano.';
+  if (exigirPlano && !i.plano) erros.plano = 'Selecione o plano.';
   return erros;
 }
 

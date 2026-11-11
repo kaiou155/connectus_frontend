@@ -34,6 +34,17 @@ export const setUnauthorizedHandler = (fn) => {
   onUnauthorized = fn;
 };
 
+let onBloqueio = () => {};
+/** Registrado pelo AuthContext: ao receber 403 ASSINATURA_BLOQUEADA a situação da assinatura é relida. */
+export const setBloqueioHandler = (fn) => {
+  onBloqueio = fn;
+};
+
+const falhar = (erro) => {
+  if (erro.codigo === 'ASSINATURA_BLOQUEADA') onBloqueio(erro);
+  throw erro;
+};
+
 export const tokenStore = {
   get: () => storage.get(TOKEN_KEY),
   set: (token) => storage.set(TOKEN_KEY, token),
@@ -74,11 +85,13 @@ async function request(method, path, { body, params, signal } = {}) {
     const res = await handle({ method, url, body, token });
     if (res.status === 401 && token) onUnauthorized();
     if (res.status >= 400) {
-      throw new ApiError(res.body?.message ?? 'Erro na requisição', {
-        status: res.status,
-        codigo: res.body?.codigo,
-        campos: res.body?.campos,
-      });
+      falhar(
+        new ApiError(res.body?.message ?? 'Erro na requisição', {
+          status: res.status,
+          codigo: res.body?.codigo,
+          campos: res.body?.campos,
+        }),
+      );
     }
     return res.body;
   }
@@ -124,13 +137,16 @@ async function request(method, path, { body, params, signal } = {}) {
         403: 'Você não tem permissão para esta ação.',
         404: 'Registro não encontrado.',
         409: 'Conflito: o registro foi alterado por outra pessoa.',
+        429: 'Muitas tentativas seguidas. Aguarde um minuto e tente novamente.',
       }[resposta.status] ||
       'Erro inesperado no servidor.';
-    throw new ApiError(mensagem, {
-      status: resposta.status,
-      codigo: dados?.codigo,
-      campos: dados?.campos,
-    });
+    falhar(
+      new ApiError(mensagem, {
+        status: resposta.status,
+        codigo: dados?.codigo,
+        campos: dados?.campos,
+      }),
+    );
   }
   return dados;
 }
