@@ -3,6 +3,20 @@ import { storage } from '../utils/storage';
 
 const TOKEN_KEY = 'conectus.token';
 
+/**
+ * O back-end devolve erros de objetos aninhados como "igreja.nomeIgreja".
+ * Os formulários usam só o nome final do campo, então os dois formatos ficam disponíveis.
+ */
+const normalizarCampos = (campos) => {
+  if (!campos || typeof campos !== 'object') return campos;
+  const saida = { ...campos };
+  Object.entries(campos).forEach(([chave, msg]) => {
+    const final = chave.split('.').pop();
+    if (final !== chave && !(final in saida)) saida[final] = msg;
+  });
+  return saida;
+};
+
 /** Erro padronizado da API. `status` segue o HTTP; `campos` traz erros de validação por campo. */
 export class ApiError extends Error {
   constructor(message, { status = 0, codigo, campos } = {}) {
@@ -10,7 +24,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.codigo = codigo;
-    this.campos = campos;
+    this.campos = normalizarCampos(campos);
   }
 }
 

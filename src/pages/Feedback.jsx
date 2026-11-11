@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { Avatar, Badge, EmptyState, ErrorState, Loading, Modal, PageHeader, Segmented, SelectField, TextAreaField, TextField } from '../components/ui';
 import { LinkMembro, SaidaMembroModal } from '../components/domain';
 import { PERFIS, STATUS_ADAPTACAO, statusAdaptacaoLabel } from '../utils/constants';
-import { formatarData } from '../utils/format';
+import { formatarData, vazioParaNulo } from '../utils/format';
 
 const ICONES = { RESPONDEU: CheckCircle2, NAO_RESPONDEU: XCircle, PARTICIPANDO: Sparkles };
 
@@ -42,12 +42,17 @@ function FeedbackCompletoModal({ item, onClose, onSalvo }) {
     }
     setEnviando(true);
     try {
-      await feedbackService.registrar({
-        ...f,
-        idMembro: item.membro.idMembro,
-        notaIntegracao: Number(f.notaIntegracao),
-        permaneceuNaCelula: f.permaneceuNaCelula === 'true',
-      });
+      await feedbackService.registrar(
+        vazioParaNulo(
+          {
+            ...f,
+            idMembro: item.membro.idMembro,
+            notaIntegracao: Number(f.notaIntegracao),
+            permaneceuNaCelula: f.permaneceuNaCelula === 'true',
+          },
+          ['dataVisita', 'dataProximoContato'],
+        ),
+      );
       toast.sucesso('Feedback registrado.');
       onSalvo();
       onClose();

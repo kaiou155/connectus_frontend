@@ -38,17 +38,26 @@ export function AuthProvider({ children }) {
       .finally(() => setCarregando(false));
   }, [logout]);
 
+  // O login devolve a situação da assinatura separada do usuário; /auth/me já devolve junto.
   const login = useCallback(async (email, senha) => {
-    const { token, usuario: u } = await authService.login(email, senha);
+    const { token, usuario: u, assinatura } = await authService.login(email, senha);
+    const completo = assinatura !== undefined ? { ...u, assinatura } : u;
     tokenStore.set(token);
-    setUsuario(u);
-    return u;
+    setUsuario(completo);
+    return completo;
   }, []);
 
   /** Usado após o cadastro de uma nova igreja, que já devolve o token do administrador. */
   const iniciarSessao = useCallback((token, u) => {
     tokenStore.set(token);
     setUsuario(u);
+  }, []);
+
+  /** Relê o usuário e a assinatura (após pagar, trocar de plano ou trocar a senha). */
+  const atualizarSessao = useCallback(async () => {
+    const u = await authService.me();
+    setUsuario(u);
+    return u;
   }, []);
 
   const value = useMemo(
@@ -58,9 +67,10 @@ export function AuthProvider({ children }) {
       login,
       logout,
       iniciarSessao,
+      atualizarSessao,
       temPerfil: (...perfis) => Boolean(usuario && perfis.includes(usuario.perfil)),
     }),
-    [usuario, carregando, login, logout, iniciarSessao],
+    [usuario, carregando, login, logout, iniciarSessao, atualizarSessao],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

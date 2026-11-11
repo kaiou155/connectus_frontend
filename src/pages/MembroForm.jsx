@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useAsync } from '../hooks/useAsync';
 import { ErrorState, Field, Loading, PageHeader, SelectField, TextAreaField, TextField } from '../components/ui';
 import { DIAS_SEMANA, ESTADOS_CIVIS, GENEROS, PERFIS_GRUPO } from '../utils/constants';
-import { formatarCep, formatarTelefone } from '../utils/format';
+import { formatarCep, formatarTelefone, vazioParaNulo } from '../utils/format';
 import { temErros, validarMembro } from '../utils/validators';
 
 const vazio = {
@@ -75,7 +75,14 @@ export default function MembroForm() {
 
   const enviar = async (e) => {
     e.preventDefault();
-    const dados = { ...f, disponibilidades: f.disponibilidades.filter((d) => d.diaSemana) };
+    const dados = vazioParaNulo(
+      {
+        ...f,
+        indicadoPor: f.indicadoPor ? Number(f.indicadoPor) : null,
+        disponibilidades: f.disponibilidades.filter((d) => d.diaSemana),
+      },
+      ['email'],
+    );
     const er = validarMembro(f.disponibilidades.length === 1 && !f.disponibilidades[0].diaSemana ? dados : f);
     setErros(er);
     if (temErros(er)) {

@@ -75,6 +75,18 @@ export const percentual = (parte, total) =>
 export const formatarNumero = (n) =>
   Number.isFinite(n) ? n.toLocaleString('pt-BR') : '∞';
 
+/**
+ * Troca texto vazio por null nos campos opcionais antes de enviar à API.
+ * O back-end valida e-mail, datas e ids quando o campo vem preenchido; null significa "não informado".
+ */
+export const vazioParaNulo = (dados, campos) => {
+  const copia = { ...dados };
+  campos.forEach((c) => {
+    if (typeof copia[c] === 'string' && copia[c].trim() === '') copia[c] = null;
+  });
+  return copia;
+};
+
 export const mesCurto = (yyyyMm) => {
   const [y, m] = yyyyMm.split('-').map(Number);
   const nome = new Date(y, m - 1, 1).toLocaleDateString('pt-BR', { month: 'short' });
