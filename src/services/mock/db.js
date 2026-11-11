@@ -140,7 +140,7 @@ export function criarSeed(agora = Date.now()) {
     idMembro += 1;
     const membro = {
       idMembro, idCelulaAlocada: null, idUsuarioTriagem: null, email: '', perfilInteresse: '',
-      indicadoPor: null, observacoes: '', statusMembro: 'AGUARDANDO_TRIAGEM', cep: '',
+      indicadoPor: null, observacoes: '', statusMembro: 'AGUARDANDO_TRIAGEM', cep: '', consentimentoLgpd: true,
       ...dados, ...geocodificar(dados.bairro, dados.cidade),
     };
     membros.push(membro);

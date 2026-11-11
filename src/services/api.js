@@ -53,6 +53,8 @@ export const membroService = {
   registrarSaida: (id, { motivo, reencaminhar = false }) =>
     http.post(`/membros/${id}/saida`, { motivo, reencaminhar }),
   desvincular: (id, motivo) => http.post(`/membros/${id}/desvincular`, { motivo }),
+  /** Exclusão definitiva (LGPD) — somente administrador. */
+  excluir: (id) => http.delete(`/membros/${id}`),
 };
 
 // Triagem

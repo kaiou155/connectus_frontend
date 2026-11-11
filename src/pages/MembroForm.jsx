@@ -14,6 +14,7 @@ const vazio = {
   nomeCompleto: '', dataNascimento: '', genero: '', estadoCivil: '', telefone: '', email: '',
   cep: '', bairro: '', cidade: '', perfilInteresse: '', indicadoPor: '', observacoes: '',
   disponibilidades: [{ diaSemana: '', horarioInicio: '', horarioFim: '' }],
+  consentimentoLgpd: false,
 };
 
 /**
@@ -84,6 +85,7 @@ export default function MembroForm() {
       ['email'],
     );
     const er = validarMembro(f.disponibilidades.length === 1 && !f.disponibilidades[0].diaSemana ? dados : f);
+    if (!edicao && !f.consentimentoLgpd) er.consentimentoLgpd = 'Confirme a autorização do visitante para continuar.';
     setErros(er);
     if (temErros(er)) {
       toast.erro('Revise os campos destacados.');
@@ -177,6 +179,26 @@ export default function MembroForm() {
             )}
           </Field>
           <TextAreaField className="span-2" label="Observações" value={f.observacoes} onChange={set('observacoes')} placeholder="Informações úteis para o líder (opcional)" />
+        </div>
+
+        <div className="field" style={{ marginTop: 18 }}>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={Boolean(f.consentimentoLgpd)}
+              onChange={(e) => {
+                const marcado = e.target.checked;
+                setF((v) => ({ ...v, consentimentoLgpd: marcado }));
+                if (erros.consentimentoLgpd) setErros((er) => ({ ...er, consentimentoLgpd: undefined }));
+              }}
+            />
+            O visitante autorizou a igreja a guardar estes dados para acompanhá-lo e indicar uma célula (LGPD).
+          </label>
+          {erros.consentimentoLgpd ? (
+            <span className="field__error">{erros.consentimentoLgpd}</span>
+          ) : (
+            <span className="field__hint">Os dados podem ser excluídos a qualquer momento a pedido do membro.</span>
+          )}
         </div>
 
         <div className="modal__footer">

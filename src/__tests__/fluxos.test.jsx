@@ -59,6 +59,11 @@ describe('Voluntário — cadastro e triagem', () => {
     fireEvent.change(screen.getByLabelText('Bairro'), { target: { value: 'Vila Mariana' } });
     fireEvent.change(screen.getByLabelText('Cidade'), { target: { value: 'São Paulo' } });
     fireEvent.change(screen.getByLabelText('Dia'), { target: { value: 'QUA' } });
+
+    // sem a autorização do visitante o cadastro não é enviado
+    fireEvent.click(screen.getByRole('button', { name: 'Cadastrar e triar' }));
+    expect(await screen.findByText('Confirme a autorização do visitante para continuar.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: /autorizou a igreja/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Cadastrar e triar' }));
 
     await screen.findByRole('heading', { name: 'Encontrar a célula ideal' });
@@ -128,6 +133,18 @@ describe('Administrador', () => {
     expect(await screen.findByText('Pinheiros - Mulheres')).toBeTruthy();
     navegar('Configurações');
     expect(await screen.findByDisplayValue('Igreja Batista Nova Vida')).toBeTruthy();
+  });
+
+  it('exclui definitivamente os dados de um membro', async () => {
+    await entrarComo('Julia Antonieli');
+    navegar('Membros');
+    fireEvent.click(await screen.findByRole('link', { name: 'Diego Alves' }));
+    expect(await screen.findByText('Consentimento LGPD')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Excluir dados/ }));
+    const dialogo = await screen.findByRole('dialog');
+    fireEvent.click(within(dialogo).getByRole('button', { name: 'Excluir definitivamente' }));
+    await screen.findByRole('heading', { name: 'Membros' });
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Diego Alves' })).toBeNull());
   });
 
   it('dados de outra igreja ficam isolados', async () => {

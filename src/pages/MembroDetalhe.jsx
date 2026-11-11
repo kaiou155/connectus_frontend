@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { CalendarDays, Filter, Heart, LogOut, Mail, MapPin, Pencil, Phone, UserRound } from 'lucide-react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { CalendarDays, Filter, Heart, LogOut, Mail, MapPin, Pencil, Phone, ShieldCheck, Trash2, UserRound } from 'lucide-react';
 import { membroService } from '../services/api';
 import { useAsync } from '../hooks/useAsync';
 import { useAuth } from '../context/AuthContext';
-import { Avatar, Badge, EmptyState, ErrorState, InfoTile, Loading, PageHeader, StatusMembroBadge } from '../components/ui';
+import { useToast } from '../context/ToastContext';
+import { Avatar, Badge, ConfirmDialog, EmptyState, ErrorState, InfoTile, Loading, PageHeader, StatusMembroBadge } from '../components/ui';
 import { SaidaMembroModal } from '../components/domain';
 import { PERFIS, diaLabel, estadoCivilLabel, perfilGrupoLabel, statusAdaptacaoLabel } from '../utils/constants';
 import { formatarData, formatarDataHora, formatarHorario } from '../utils/format';
@@ -14,8 +15,26 @@ const TOM_LOG = { APROVADA: 'success', REJEITADA: 'danger', SUGERIDA: 'warning' 
 export default function MembroDetalhe() {
   const { id } = useParams();
   const { temPerfil } = useAuth();
+  const toast = useToast();
+  const navigate = useNavigate();
   const { dados: m, erro, carregando, recarregar } = useAsync(() => membroService.obter(id), [id]);
   const [saida, setSaida] = useState(false);
+  const [excluir, setExcluir] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
+
+  // Exclusão definitiva a pedido do titular dos dados (LGPD). Não há como desfazer.
+  const confirmarExclusao = async () => {
+    setExcluindo(true);
+    try {
+      const r = await membroService.excluir(id);
+      toast.sucesso(r?.mensagem ?? 'Dados do membro excluídos.');
+      navigate('/membros', { replace: true });
+    } catch (e) {
+      toast.erro(e);
+      setExcluindo(false);
+      setExcluir(false);
+    }
+  };
 
   if (carregando) return <Loading />;
   if (erro) return <ErrorState erro={erro} onRetry={recarregar} />;
@@ -35,6 +54,9 @@ export default function MembroDetalhe() {
             {admin && <Link className="btn" to={`/membros/${m.idMembro}/editar`}><Pencil size={15} /> Editar</Link>}
             {(admin || temPerfil(PERFIS.LIDER)) && m.celula && (
               <button className="btn btn--danger" onClick={() => setSaida(true)}><LogOut size={15} /> Registrar saída</button>
+            )}
+            {admin && (
+              <button className="btn btn--danger" onClick={() => setExcluir(true)}><Trash2 size={15} /> Excluir dados</button>
             )}
           </>
         }
@@ -65,6 +87,9 @@ export default function MembroDetalhe() {
           <InfoTile icon={Heart} label="Interesse">{m.perfilInteresse ? perfilGrupoLabel(m.perfilInteresse) : '—'}</InfoTile>
           <InfoTile icon={CalendarDays} label="Cadastro">{formatarDataHora(m.dataCadastro)}</InfoTile>
           <InfoTile icon={UserRound} label="Indicado por">{m.indicadoPorNome ?? '—'}</InfoTile>
+          <InfoTile icon={ShieldCheck} label="Consentimento LGPD">
+            {m.consentimentoLgpd ? 'Autorizado' : 'Não registrado'}
+          </InfoTile>
         </div>
         {m.observacoes && <p className="small" style={{ marginBottom: 0 }}><strong>Observações:</strong> {m.observacoes}</p>}
       </div>
@@ -143,6 +168,17 @@ export default function MembroDetalhe() {
       )}
 
       <SaidaMembroModal membro={saida ? m : null} admin={admin} onClose={() => setSaida(false)} onConcluido={recarregar} />
+
+      <ConfirmDialog
+        open={excluir}
+        title="Excluir dados do membro?"
+        message={`Todos os dados de ${m.nomeCompleto} (cadastro, histórico, triagens e feedbacks) serão apagados definitivamente. Use apenas quando o próprio membro pedir a exclusão.`}
+        confirmLabel="Excluir definitivamente"
+        danger
+        loading={excluindo}
+        onCancel={() => setExcluir(false)}
+        onConfirm={confirmarExclusao}
+      />
     </>
   );
 }

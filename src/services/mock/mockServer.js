@@ -206,6 +206,7 @@ function dadosMembro(body) {
     perfilInteresse: body.perfilInteresse ?? '',
     indicadoPor: body.indicadoPor ? Number(body.indicadoPor) : null,
     observacoes: body.observacoes ?? '',
+    ...(body.consentimentoLgpd !== undefined ? { consentimentoLgpd: Boolean(body.consentimentoLgpd) } : {}),
     ...geocodificar(body.bairro, body.cidade),
   };
 }
@@ -584,6 +585,27 @@ rota('POST', '/membros/:id/saida', ({ db, usuario, body, params }) => {
 rota('POST', '/membros/:id/desvincular', ({ db, usuario, body, params }) => {
   exigirPerfil(usuario, 'ADMINISTRADOR');
   return registrarSaida(db, usuario, params.id, body?.motivo || 'Desvinculado pelo administrador', true);
+});
+
+// exclusão definitiva a pedido do titular (LGPD): apaga o membro e tudo que depende dele
+rota('DELETE', '/membros/:id', ({ db, usuario, params }) => {
+  exigirPerfil(usuario, 'ADMINISTRADOR');
+  const m = buscarNoTenant(db.membros, 'idMembro', params.id, usuario, 'Membro');
+  if (m.idCelulaAlocada) {
+    const c = db.celulas.find((x) => x.idCelula === m.idCelulaAlocada);
+    if (c && c.capacidadeAtual > 0) c.capacidadeAtual -= 1;
+  }
+  const outro = (x) => x.idMembro !== m.idMembro;
+  db.membros = db.membros.filter(outro);
+  db.disponibilidades = db.disponibilidades.filter(outro);
+  db.historicoCelulas = db.historicoCelulas.filter(outro);
+  db.logsTriagem = db.logsTriagem.filter(outro);
+  db.listaEspera = db.listaEspera.filter(outro);
+  db.feedbacks = db.feedbacks.filter(outro);
+  db.membros.forEach((x) => {
+    if (x.indicadoPor === m.idMembro) x.indicadoPor = null;
+  });
+  return ok({ mensagem: 'Dados do membro excluídos definitivamente.' });
 });
 
 // ---- Triagem
