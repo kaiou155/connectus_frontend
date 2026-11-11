@@ -11,7 +11,7 @@ Orientador: Prof. Luciano Saraiva.
 
 ## Tecnologias
 
-React, Vite, React Router e Vitest. O back-end será em Node.js com PostgreSQL.
+React, Vite, React Router e Vitest. O back-end é feito em NestJS, Prisma e PostgreSQL, em um repositório separado.
 
 ## Como rodar
 
@@ -25,18 +25,23 @@ Depois é só abrir http://localhost:5173.
 
 ## Estado atual
 
-O back-end ainda não está pronto, então o projeto roda em modo demonstração: os dados
-são simulados no próprio navegador, seguindo o contrato da API em `docs/API_CONTRACT.md`.
-As telas do protótipo já estão implementadas e o algoritmo de matching funciona em modo
-demonstração. Ainda falta o back-end (API em Node.js e banco PostgreSQL) e a integração com o front.
+As telas do protótipo estão implementadas, junto com recuperação de senha, consentimento LGPD no cadastro
+de membros e a parte de assinatura (planos, pagamento pelo Mercado Pago e bloqueio quando a assinatura vence).
 
-Para usar com o back-end real, altere `VITE_USE_MOCK` para `false` no `.env` e configure
-o endereço da API (veja `.env.example`).
+Por padrão o projeto roda em modo demonstração: os dados são simulados no próprio navegador, seguindo o
+contrato da API em `docs/API_CONTRACT.md`.
+
+Para usar com o back-end, suba a API (porta 3333) e no `.env` do front coloque `VITE_USE_MOCK=false`.
+O `VITE_API_PROXY` já aponta para `http://localhost:3333`. No `.env` do back-end, `CORS_ORIGIN` e
+`FRONTEND_URL` devem ser `http://localhost:5173`.
 
 ## Demonstração
 
 Na tela de login há botões de acesso rápido para os três perfis (voluntário, líder e
 administrador). A senha das contas de teste é `conectus123`.
+
+Para mostrar a assinatura: entre como administradora, abra Configurações e use "Simular fim do teste grátis".
+O sistema passa a ficar somente leitura até assinar de novo. No pagamento simulado, o cupom `TCC2026` dá 20% de desconto.
 
 ## Testes
 

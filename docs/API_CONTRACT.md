@@ -24,8 +24,10 @@ Toda resposta de erro deve ter o formato:
 | 400 | Validação falhou | Destaca os `campos` no formulário |
 | 401 | Token ausente, inválido ou expirado | Encerra a sessão e volta ao login |
 | 403 | Perfil sem permissão (RC03) ou limite do plano (`codigo: LIMITE_PLANO`) | Mostra a mensagem |
+| 403 | Assinatura sem acesso: escrita recusada (`codigo: ASSINATURA_BLOQUEADA`). GET continua liberado | Relê `/auth/me` e mostra a faixa de sistema bloqueado |
 | 404 | Registro inexistente **ou de outra igreja** | Mostra a mensagem |
 | 409 | Conflito de regra de negócio (ver códigos abaixo) | Depende do código |
+| 429 | Muitas tentativas seguidas (login, esqueci a senha) | Pede para aguardar um minuto |
 
 Códigos de 409 usados pela interface:
 
@@ -34,6 +36,11 @@ Códigos de 409 usados pela interface:
 | `CELULA_LOTADA` | A célula atingiu a capacidade entre a sugestão e a confirmação (RC06) | Recalcula o matching |
 | `JA_TRIADO` | Outro voluntário já alocou o membro | Volta para a fila de triagem |
 | `CONFIRMACAO_NECESSARIA` | Ação exige confirmação (UC009 3a, UC010 3a) | Abre diálogo e reenvia com `confirmar: true` |
+| `USO_EXCEDE_PLANO` | O uso atual não cabe no plano escolhido | Mostra a mensagem |
+| `CHECKOUT_NECESSARIO` | Troca de plano sem assinatura paga ativa | Mostra a mensagem; o botão "Assinar" leva ao checkout |
+| `JA_ASSINANTE` | Checkout com assinatura paga já ativa | Mostra a mensagem |
+
+Outros códigos: `TOKEN_INVALIDO` (400, link de redefinição de senha inválido ou expirado).
 
 ## Perfis (RC03)
 
@@ -53,19 +60,36 @@ Códigos de 409 usados pela interface:
   "token": "<jwt>",
   "usuario": {
     "idUsuario": 2, "nome": "Carolina Magalhães", "email": "voluntario@conectus.app", "telefone": "(11) 98888-2000",
-    "perfil": "VOLUNTARIO", "ativo": true, "dataCriacao": "…", "idIgreja": 1,
+    "perfil": "VOLUNTARIO", "ativo": true, "senhaTemporaria": false, "dataCriacao": "…", "idIgreja": 1,
     "idCelula": null, "nomeCelula": null
+  },
+  "assinatura": {
+    "status": "TESTE", "liberado": true, "motivoBloqueio": null,
+    "acessoAte": "2026-11-18T12:00:00.000Z", "diasRestantes": 7, "plano": "ESSENCIAL"
   }
 }
 ```
 `idCelula`/`nomeCelula` vêm preenchidos quando o usuário é líder de uma célula ativa.
+`senhaTemporaria: true` leva o usuário à tela de troca de senha antes de qualquer outra.
+`assinatura.status`: `TESTE ATIVA ATRASADA CANCELADA EXPIRADA`; com `liberado: false` o sistema fica somente leitura
+e `motivoBloqueio` é `TESTE_ENCERRADO PAGAMENTO_ATRASADO ASSINATURA_CANCELADA ASSINATURA_EXPIRADA`.
 **401** credenciais inválidas · **403** usuário desativado.
 
 Payload esperado do JWT: `{ "sub": idUsuario, "perfil": "…", "idIgreja": 1, "exp": <unix> }`.
 Senhas com bcrypt (RNF02).
 
 ### `GET /auth/me`
-Retorna o mesmo objeto `usuario` acima. Usado ao recarregar a página.
+Retorna o objeto `usuario` acima com o campo `assinatura` junto (`{ ...usuario, assinatura }`). Usado ao recarregar a página.
+
+### Senha
+| Método | Rota | Corpo | Observações |
+| --- | --- | --- | --- |
+| POST | `/auth/esqueci-senha` *(pública)* | `{ "email" }` | Envia por e-mail o link `FRONTEND_URL/redefinir-senha?token=…` (válido por 1 hora). Responde igual exista o e-mail ou não |
+| POST | `/auth/redefinir-senha` *(pública)* | `{ "token", "novaSenha" }` | Mínimo de 8 caracteres. **400** `TOKEN_INVALIDO` se o link expirou ou já foi usado |
+| POST | `/auth/alterar-senha` | `{ "senhaAtual", "novaSenha" }` | Limpa `senhaTemporaria`. **400** com `campos.senhaAtual` se a senha atual estiver errada |
+| POST | `/usuarios/:id/redefinir-senha` | `{ "senhaTemporaria" }` | ADMIN. Define senha temporária e envia por e-mail |
+
+Todas respondem `{ "mensagem": "…" }`.
 
 ---
 
@@ -77,13 +101,15 @@ Retorna o mesmo objeto `usuario` acima. Usado ao recarregar a página.
   "idIgreja": 1, "nomeIgreja": "Igreja Batista Nova Vida", "denominacao": "Batista", "cidade": "São Paulo",
   "estado": "SP", "plano": "INTERMEDIARIO", "ativo": true, "dataCadastro": "…",
   "uso": { "membros": 104, "celulas": 7, "usuarios": 9 },
-  "limites": { "membros": 500, "celulas": 20, "usuarios": 10 }
+  "limites": { "membros": 500, "celulas": 20, "usuarios": 10 },
+  "assinatura": { "status": "ATIVA", "liberado": true, "…": "mesmo formato do login" }
 }
 ```
 Planos: `ESSENCIAL` (100/5/3), `INTERMEDIARIO` (500/20/10), `PREMIUM` (ilimitado → `null`).
 
 ### `PUT /igrejas/atual` — ADMINISTRADOR
-Corpo: `nomeIgreja*`, `denominacao`, `cidade*`, `estado*`, `plano*`. **409** se o uso atual excede o novo plano.
+Corpo: `nomeIgreja*`, `denominacao`, `cidade*`, `estado*`, `plano` (opcional; segue a regra de `POST /assinatura/plano`).
+O front envia só os dados da igreja; a troca de plano é feita na tela de Assinatura.
 
 ### `POST /igrejas` *(pública — onboarding SaaS)*
 ```json
@@ -93,6 +119,8 @@ Corpo: `nomeIgreja*`, `denominacao`, `cidade*`, `estado*`, `plano*`. **409** se 
 }
 ```
 **201** `{ "igreja": {…}, "token": "<jwt>", "usuario": {…} }` · **409** e-mail já cadastrado.
+A igreja começa com a assinatura em teste grátis (`TRIAL_DIAS` no back-end). Erros de validação podem vir
+com o caminho completo (`"igreja.nomeIgreja"`); o front também aceita só o nome final do campo.
 
 ---
 
@@ -159,7 +187,7 @@ ocupação em tempo real (RF03). Para atualização instantânea, o back-end pod
   "idMembro": 98, "nomeCompleto": "Mariana Costa", "dataNascimento": "2002-05-10", "idade": 24,
   "genero": "F", "estadoCivil": "SOLTEIRO", "telefone": "(11) 91234-5678", "email": "mariana@email.com",
   "cep": "04010-100", "bairro": "Vila Mariana", "cidade": "São Paulo", "latitude": -23.58, "longitude": -46.63,
-  "perfilInteresse": "JOVENS", "indicadoPor": 12, "observacoes": "",
+  "perfilInteresse": "JOVENS", "indicadoPor": 12, "observacoes": "", "consentimentoLgpd": true,
   "disponibilidades": [{ "diaSemana": "QUA", "horarioInicio": "19:00", "horarioFim": "22:00" }],
   "statusMembro": "AGUARDANDO_TRIAGEM", "idCelulaAlocada": null, "celula": null,
   "idUsuarioTriagem": 2, "dataCadastro": "…", "idIgreja": 1
@@ -176,6 +204,10 @@ ocupação em tempo real (RF03). Para atualização instantânea, o back-end pod
 | PUT | `/membros/:id` | ADMIN | mesmo corpo do POST; substitui as disponibilidades |
 | POST | `/membros/:id/saida` | LIDER (própria célula), ADMIN | `{ "motivo": "…", "reencaminhar": false }` — fecha `historico_celulas`, decrementa `capacidade_atual`; status vira `AGUARDANDO_TRIAGEM` se `reencaminhar`, senão `DESLIGADO` |
 | POST | `/membros/:id/desvincular` | ADMIN | `{ "motivo": "…" }` — equivale à saída com `reencaminhar: true` |
+| DELETE | `/membros/:id` | ADMIN | Exclusão definitiva a pedido do titular (LGPD). Devolve a vaga da célula. `{ "mensagem": "…" }` |
+
+Campos opcionais não preenchidos (`email`, `indicadoPor`) são enviados como `null`. No cadastro, o front exige
+`consentimentoLgpd: true` (o visitante autorizou o uso dos dados).
 
 ---
 
@@ -294,6 +326,47 @@ com estilos próprios para impressão.
 
 ### `GET /busca?q=` (mínimo 2 caracteres)
 `{ "membros": [], "celulas": [], "lideres": [] }` — até 8 de cada. Líder só recebe membros da própria célula.
+
+---
+
+## Planos e assinatura
+
+### `GET /planos` *(pública)*
+```json
+{
+  "trialDias": 7,
+  "planos": [
+    { "idPlano": "ESSENCIAL", "nome": "Essencial", "descricao": "…", "valor": 49,
+      "limites": { "membros": 100, "celulas": 5, "usuarios": 3 }, "historicoMeses": 6 }
+  ]
+}
+```
+`null` em um limite significa ilimitado.
+
+### Rotas de `/assinatura` — ADMINISTRADOR, funcionam mesmo com o sistema bloqueado
+| Método | Rota | Corpo | Resposta |
+| --- | --- | --- | --- |
+| GET | `/assinatura` | — | Situação completa (abaixo) |
+| GET | `/assinatura/cupom/:codigo` *(pública)* | — | `{ "valido", "codigo", "percDesconto", "descricao" }` |
+| POST | `/assinatura/checkout` | `{ "plano", "cupom"?, "emailPagador"? }` | `{ "initPoint", "valor", "percDesconto", … }` — o front redireciona para `initPoint` (Mercado Pago) |
+| POST | `/assinatura/sincronizar` | — | Situação completa. Chamado na tela `/assinatura/retorno`, para onde o Mercado Pago devolve o cliente |
+| POST | `/assinatura/plano` | `{ "plano" }` | Situação completa + `mensagem`. Em teste troca na hora; upgrade vale na hora; downgrade fica agendado |
+| POST | `/assinatura/cancelar` | — | Situação completa + `mensagem`. O acesso continua até o fim do período pago |
+
+Situação completa (`GET /assinatura`):
+```json
+{
+  "status": "ATIVA", "liberado": true, "motivoBloqueio": null, "acessoAte": "…", "diasRestantes": 18,
+  "planoId": "INTERMEDIARIO", "plano": { "…": "objeto de /planos" }, "planoPendente": null,
+  "valorCobrado": 99, "cupom": null, "fimTeste": null, "vencimento": "…", "ultimoPagamento": "…",
+  "formaCobranca": "MERCADO_PAGO", "podeFazerCheckout": false, "podeCancelar": true, "pagamentosHabilitados": true,
+  "uso": { "membros": 104, "celulas": 7, "usuarios": 9 }, "limites": { "…": "…" },
+  "faturas": [{ "idFatura": 1, "mes": 10, "ano": 2026, "plano": "INTERMEDIARIO", "pagoEm": "…", "valorPago": 99, "status": "PAGA" }]
+}
+```
+
+No modo demonstração o pagamento é simulado: o checkout devolve `/assinatura/retorno` em vez do link do
+Mercado Pago, e os cupons `TCC2026` (20%) e `BEMVINDO` (10%) são aceitos.
 
 ---
 
